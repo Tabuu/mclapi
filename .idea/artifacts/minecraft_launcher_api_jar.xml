@@ -1,0 +1,9 @@
+<component name="ArtifactManager">
+  <artifact type="jar" name="minecraft-launcher-api:jar">
+    <output-path>$PROJECT_DIR$/out/artifacts/minecraft_launcher_api_jar</output-path>
+    <root id="archive" name="minecraft-launcher-api.jar">
+      <element id="module-output" name="minecraft-launcher-api" />
+      <element id="extracted-dir" path="$MAVEN_REPOSITORY$/com/google/code/gson/gson/2.8.0/gson-2.8.0.jar" path-in-jar="/" />
+    </root>
+  </artifact>
+</component>
