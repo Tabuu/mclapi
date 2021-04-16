@@ -16,12 +16,6 @@ import java.util.Objects;
 
 public class HttpRequest {
 
-    private static final JsonParser PARSER;
-
-    static {
-        PARSER = new JsonParser();
-    }
-
     public static String getParameterizedUri(String uri, Map<String, String> parameters) {
         StringBuilder result = new StringBuilder(uri);
 
@@ -79,8 +73,6 @@ public class HttpRequest {
         if(Objects.nonNull(body)) {
             DataOutputStream outputStream = new DataOutputStream(connection.getOutputStream());
 
-            System.out.println(body.toString());
-
             outputStream.writeBytes(body.toString());
             outputStream.flush();
             outputStream.close();
@@ -101,7 +93,7 @@ public class HttpRequest {
         inputReader.close();
         connection.disconnect();
 
-        return (JsonObject) PARSER.parse(content.toString());
+        return (JsonObject) JsonParser.parseString(content.toString());
     }
 
 }

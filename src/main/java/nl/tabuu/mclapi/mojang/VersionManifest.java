@@ -1,29 +1,25 @@
-package nl.tabuu.mclapi.asset;
+package nl.tabuu.mclapi.mojang;
 
 import com.google.gson.Gson;
 import com.google.gson.JsonObject;
-import nl.tabuu.mclapi.asset.download.DownloadableAssetPackage;
+import nl.tabuu.mclapi.mojang.IMCVersion;
 import nl.tabuu.mclapi.util.HttpRequest;
 
-import java.util.*;
+import java.util.Arrays;
+import java.util.Collections;
+import java.util.Map;
+import java.util.Objects;
 import java.util.stream.Collectors;
 
+/**
+ * Represents the Minecraft version manifest of the Mojang database.
+ */
 public class VersionManifest {
 
     private static final String
             VERSION_MANIFEST_URL = "https://launchermeta.mojang.com/mc/game/version_manifest.json";
 
-    private final String _versionManifestUrl;
-
     private Map<String, IMCVersion> _versions;
-
-    public VersionManifest(String versionManifestUrl) {
-        _versionManifestUrl = versionManifestUrl;
-    }
-
-    public VersionManifest() {
-        this(VERSION_MANIFEST_URL);
-    }
 
     public Map<String, IMCVersion> getVersions() {
         if (Objects.isNull(_versions))
@@ -35,7 +31,7 @@ public class VersionManifest {
     private IMCVersion[] findVersions() {
         JsonObject manifest;
         try {
-            manifest = HttpRequest.doJsonBodyRequest(_versionManifestUrl, "GET");
+            manifest = HttpRequest.doJsonBodyRequest(VERSION_MANIFEST_URL, "GET");
         } catch (Exception exception) { return new IMCVersion[0]; }
 
         Gson gson = new Gson();
@@ -56,8 +52,8 @@ public class VersionManifest {
         }
 
         @Override
-        public DownloadableAssetPackage getDownloadableAssetPackage() {
-            return new DownloadableAssetPackage(getId(), url);
+        public String getAssetManifestUrl() {
+            return url;
         }
     }
 }

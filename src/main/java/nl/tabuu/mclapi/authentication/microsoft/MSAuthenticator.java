@@ -2,14 +2,19 @@ package nl.tabuu.mclapi.authentication.microsoft;
 
 import com.google.gson.JsonArray;
 import com.google.gson.JsonObject;
+import nl.tabuu.mclapi.authentication.AuthenticationResponse;
 import nl.tabuu.mclapi.authentication.IAuthenticator;
 import nl.tabuu.mclapi.authentication.Session;
 import nl.tabuu.mclapi.util.HttpRequest;
 
 import java.io.IOException;
 import java.util.Map;
+import java.util.Objects;
 
-public class MSAuthenticator implements IAuthenticator {
+/**
+ * Represents a Minecraft Microsoft authenticator.
+ */
+public class MSAuthenticator implements IAuthenticator<MSAuthenticationRequest> {
 
     private static final String
             AUTH_TOKEN_URL = "https://login.live.com/oauth20_token.srf",
@@ -17,17 +22,29 @@ public class MSAuthenticator implements IAuthenticator {
             XSTS_AUTH_URL = "https://xsts.auth.xboxlive.com/xsts/authorize",
             MC_LOGIN_URL = "https://api.minecraftservices.com/authentication/login_with_xbox";
 
-    public Session authenticate(String authenticationCode) {
+    @Override
+    public AuthenticationResponse authenticate(MSAuthenticationRequest request) {
+        final String msAccessToken, sessionId;
+        final TokenPair xblToken, xstsToken;
+
         try {
-            String msAccessToken = getMicrosoftAccessToken(authenticationCode);
-            TokenPair xblToken = getXBLToken(msAccessToken);
-            TokenPair xstsToken = getXSTSToken(xblToken);
-            String mcAccessToken = getMinecraftAccessToken(xstsToken);
+            msAccessToken = getMicrosoftAccessToken(request.getAuthorisationToken());
+            xblToken = getXBLToken(msAccessToken);
+            xstsToken = getXSTSToken(xblToken);
+        } catch (IOException exception) {
+            return new AuthenticationResponse(AuthenticationResponse.State.NO_AUTHENTICATION);
+        }
 
-            return new Session(mcAccessToken);
-        } catch (IOException ignored) { }
+        try {
+            sessionId = getMinecraftSessionId(xstsToken);
+        } catch (IOException ignored) {
+            return new AuthenticationResponse(AuthenticationResponse.State.NO_SESSION);
+        }
 
-        return null;
+        if(Objects.isNull(sessionId))
+            return new AuthenticationResponse(AuthenticationResponse.State.NO_SESSION);
+
+        return new AuthenticationResponse(AuthenticationResponse.State.SUCCESS, new Session(sessionId));
     }
 
     /**
@@ -108,7 +125,7 @@ public class MSAuthenticator implements IAuthenticator {
         return new TokenPair(token, uhs);
     }
 
-    private String getMinecraftAccessToken(TokenPair xstsToken) throws IOException {
+    private String getMinecraftSessionId(TokenPair xstsToken) throws IOException {
         JsonObject json = new JsonObject();
         json.addProperty("identityToken", String.format("XBL3.0 x=%s;%s", xstsToken.getHash(), xstsToken.getToken()));
 
@@ -120,8 +137,8 @@ public class MSAuthenticator implements IAuthenticator {
         return response.get("access_token").getAsString();
     }
 
-    private class TokenPair {
-        private String token, hash;
+    private static class TokenPair {
+        private final String token, hash;
 
         public TokenPair(String token, String hash) {
             this.token = token;

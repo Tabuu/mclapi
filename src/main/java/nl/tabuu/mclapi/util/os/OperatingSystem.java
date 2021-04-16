@@ -1,48 +1,47 @@
 package nl.tabuu.mclapi.util.os;
 
 import java.io.File;
-import java.util.Arrays;
 import java.util.Objects;
 
-public enum OperatingSystem {
-    WINDOWS("Windows", "windows", "win") {
-        @Override
-        protected File findMinecraftDirectory() {
-            String appDataLocation = System.getenv("appdata");
-            if (Objects.isNull(appDataLocation))
-                return super.findMinecraftDirectory();
-
-            return new File(appDataLocation, ".minecraft");
-        }
-    },
-    SOLARIS("Solaris/Sun OS", "solaris", "sunos") {
-        @Override
-        protected File findMinecraftDirectory() {
-            String homeLocation = System.getProperty("user.home");
-            return new File(homeLocation, "Library/Application Support/minecraft");
-        }
-    },
-    UNIX("Linux/Unix", "linux", "nix", "nux", "aix"),
-    MAC("OSX", "osx", "mac");
+public class OperatingSystem {
 
     private static OperatingSystem CURRENT;
+    public static final OperatingSystem
+            WINDOWS = new OperatingSystem("Windows", "windows", getMinecraftDirectoryWindows()),
+            SOLARIS = new OperatingSystem("Solaris/Sun OS", "solaris", getMinecraftDirectorySolaris()),
+            UNIX = new OperatingSystem("Linux/Unix", "linux", getMinecraftDirectoryUnix()),
+            MAC = new OperatingSystem("OSX", "osx", getMinecraftDirectoryUnix());
 
-    private final String _name, _minecraftId;
-    private final String[] _identifiers;
-    private File _minecraftDirectory;
+    private final String _name, _version, _architecture, _variableDelimiter, _minecraftId;
+    private final File _minecraftDirectory;
 
-    OperatingSystem(String name, String minecraftId, String... identifiers) {
+    public OperatingSystem(String name, String version, String architecture, String variableDelimiter, String minecraftId, File minecraftDirectory) {
         _name = name;
+        _version = version;
+        _architecture = architecture;
+        _variableDelimiter = variableDelimiter;
         _minecraftId = minecraftId;
-        _identifiers = identifiers;
+        _minecraftDirectory = minecraftDirectory;
     }
 
-    public boolean isCurrent() {
-        return Arrays.stream(_identifiers).anyMatch(id -> System.getProperty("os.name").contains(id));
+    public OperatingSystem(String name, String minecraftId, File minecraftDirectory) {
+        this(name, System.getProperty("os.version"), System.getProperty("os.arch"), System.getProperty("path.separator"), minecraftId, minecraftDirectory);
     }
 
-    public String getDisplayName() {
+    public String getName() {
         return _name;
+    }
+
+    public String getArchitecture() {
+        return _architecture;
+    }
+
+    public String getPathSeparator() {
+        return _variableDelimiter;
+    }
+
+    public String getVersion() {
+        return _version;
     }
 
     public String getMinecraftId() {
@@ -50,25 +49,45 @@ public enum OperatingSystem {
     }
 
     public File getMinecraftDirectory() {
-        if (Objects.isNull(_minecraftDirectory))
-            _minecraftDirectory = findMinecraftDirectory();
         return _minecraftDirectory;
     }
 
-    protected File findMinecraftDirectory() {
+    private static File getMinecraftDirectoryWindows() {
+        String appDataLocation = System.getenv("appdata");
+        if (Objects.isNull(appDataLocation))
+            return getMinecraftDirectoryUnix();
+
+        return new File(appDataLocation, ".minecraft");
+    }
+
+    private static File getMinecraftDirectorySolaris() {
+        String homeLocation = System.getProperty("user.home");
+        return new File(homeLocation, ".minecraft");
+    }
+
+    private static File getMinecraftDirectoryUnix() {
         String homeLocation = System.getProperty("user.home");
         return new File(homeLocation, ".minecraft");
     }
 
     public static OperatingSystem getCurrent() {
-        if(Objects.isNull(CURRENT)) {
-            for (OperatingSystem os : values()) {
-                if(!os.isCurrent()) continue;
-                CURRENT = os;
-                return getCurrent();
-            }
+        if (Objects.isNull(CURRENT)) {
+            String name = System.getProperty("os.name");
 
-            throw new IllegalStateException("The current OS is not supported.");
+            if (name.contains("win"))
+                CURRENT = WINDOWS;
+
+            else if (name.contains("sunos"))
+                CURRENT = SOLARIS;
+
+            else if (name.contains("mac"))
+                CURRENT = MAC;
+
+            else if (name.contains("nix") || name.contains("nux") || name.contains("aix"))
+                CURRENT = UNIX;
+
+            else
+                throw new IllegalStateException("Could not find the current operating system.");
         }
 
         return CURRENT;

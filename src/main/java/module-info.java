@@ -1,4 +1,5 @@
 module nl.tabuu.mclapi {
     requires com.google.gson;
-    exports nl.tabuu.mclapi;
+
+    exports nl.tabuu.mclapi.authentication;
 }

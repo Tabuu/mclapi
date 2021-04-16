@@ -1,4 +1,4 @@
-package nl.tabuu.mclapi.asset.download;
+package nl.tabuu.mclapi.mojang;
 
 import com.google.gson.Gson;
 import com.google.gson.JsonElement;
@@ -18,29 +18,26 @@ import java.util.List;
 import java.util.Map;
 import java.util.stream.Collectors;
 
-public class DownloadableAssetPackage {
+public class MCAssetPackage {
 
     private static final String
             RESOURCE_URL = "http://resources.download.minecraft.net/%.2s/%s";
 
-    private final String _id;
-    private final String _name;
+    private final IMCVersion _version;
     private final DownloadableAssetWrapper _client;
     private final DownloadableAssetWrapper _assetIndex;
     private final DownloadableLibraryWrapper[] _libraries;
     private final DownloadableLibraryWrapper[] _classifiers;
 
-    public DownloadableAssetPackage(String id, String manifestUrl) {
-        _id = id;
+    public MCAssetPackage(IMCVersion version) {
+        _version = version;
         JsonObject manifest;
 
         try {
-            manifest = HttpRequest.doJsonBodyRequest(manifestUrl, "GET");
+            manifest = HttpRequest.doJsonBodyRequest(version.getAssetManifestUrl(), "GET");
         } catch (Exception exception) {
             throw new IllegalStateException("Could not obtain asset package.");
         }
-
-        _name = manifest.get("assets").getAsString();
 
         Gson gson = new Gson();
         _client = gson.fromJson(manifest.getAsJsonObject("downloads").get("client"), DownloadableAssetWrapper.class);
@@ -73,6 +70,10 @@ public class DownloadableAssetPackage {
         return _client;
     }
 
+    public IMCVersion getVersion() {
+        return _version;
+    }
+
     public DownloadableLibraryWrapper[] getLibraries() {
         return _libraries;
     }
@@ -81,16 +82,8 @@ public class DownloadableAssetPackage {
         return _classifiers;
     }
 
-    public String getId() {
-        return _id;
-    }
-
-    public String getName() {
-        return _name;
-    }
-
     public boolean download(File target) {
-        if (!_client.download(new File(new File(target, String.format("/versions/%s/", getId())), String.format("/%s.jar", getId()))))
+        if (!_client.download(new File(new File(target, String.format("/versions/%s/", getVersion().getId())), String.format("/%s.jar", getVersion().getId()))))
             return false;
 
         for (DownloadableLibraryWrapper library : getLibraries())
@@ -101,7 +94,7 @@ public class DownloadableAssetPackage {
             if (!library.download(new File(target, String.format("/libraries/%s", library.getPath()))))
                 return false;
 
-        File indexFile = new File(target, String.format("/assets/indexes/%s.json", getId()));
+        File indexFile = new File(target, String.format("/assets/indexes/%s.json", getVersion().getId()));
         if (!_assetIndex.download(indexFile))
             return false;
 
@@ -113,9 +106,8 @@ public class DownloadableAssetPackage {
         }
 
         Gson gson = new Gson();
-        JsonParser parser = new JsonParser();
         JsonReader reader = new JsonReader(indexReader);
-        JsonObject object = parser.parse(reader).getAsJsonObject().getAsJsonObject("objects");
+        JsonObject object = JsonParser.parseReader(reader).getAsJsonObject().getAsJsonObject("objects");
 
         for (Map.Entry<String, JsonElement> entry : object.entrySet()) {
             DownloadableGameAssetWrapper gameAsset = gson.fromJson(entry.getValue(), DownloadableGameAssetWrapper.class);
@@ -123,13 +115,11 @@ public class DownloadableAssetPackage {
                 return false;
         }
 
-        System.out.println(getClassifiers().length);
-
         // Extracting
         for (DownloadableLibraryWrapper classifier : getClassifiers()) {
 
             File file = new File(target, String.format("/libraries/%s", classifier.getPath()));
-            File destination = new File(target, String.format("/versions/%s/natives/", getId()));
+            File destination = new File(target, String.format("/versions/%s/natives/", getVersion().getId()));
             try {
                 FileUtil.unzip(file, destination);
             } catch (IOException exception) {
@@ -190,5 +180,4 @@ public class DownloadableAssetPackage {
             return path;
         }
     }
-
 }

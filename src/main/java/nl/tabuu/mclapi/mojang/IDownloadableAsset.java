@@ -1,4 +1,4 @@
-package nl.tabuu.mclapi.asset.download;
+package nl.tabuu.mclapi.mojang;
 
 import nl.tabuu.mclapi.util.FileUtil;
 
@@ -6,13 +6,34 @@ import java.io.*;
 import java.net.URL;
 import java.security.NoSuchAlgorithmException;
 
+/**
+ * Represents a downloadable asset from the Mojang database.
+ */
 public interface IDownloadableAsset {
+
+    /**
+     * Returns the url of the asset.
+     * @return the url of the asset.
+     */
     String getUrl();
 
+    /**
+     * Returns the sha1-hash of the file, according to the database.
+     * @return the sha1-hash of the file, according to the database.
+     */
     String getHash();
 
+    /**
+     * Returns the byte-size of the asset, according to the database.
+     * @return the byte-size of the asset, according to the database.
+     */
     int getSize();
 
+    /**
+     * Downloads the asset to the target directory.
+     * @param target The directory to download the asset to.
+     * @return True if the asset downloaded successfully, false otherwise.
+     */
     default boolean download(File target) {
         if (target.exists()) {
             String sha1;
