@@ -29,13 +29,14 @@ public class MSAuthenticator implements IAuthenticator<MSAuthenticationRequest> 
 
         try {
             msAccessToken = getMicrosoftAccessToken(request.getAuthorisationToken());
-            xblToken = getXBLToken(msAccessToken);
-            xstsToken = getXSTSToken(xblToken);
         } catch (IOException exception) {
+            exception.printStackTrace();
             return new AuthenticationResponse(AuthenticationResponse.State.NO_AUTHENTICATION);
         }
 
         try {
+            xblToken = getXBLToken(msAccessToken);
+            xstsToken = getXSTSToken(xblToken);
             sessionId = getMinecraftSessionId(xstsToken);
         } catch (IOException ignored) {
             return new AuthenticationResponse(AuthenticationResponse.State.NO_SESSION);
@@ -65,7 +66,8 @@ public class MSAuthenticator implements IAuthenticator<MSAuthenticationRequest> 
 
         String url = HttpRequest.getParameterizedUri(AUTH_TOKEN_URL, data);
 
-        JsonObject response = HttpRequest.doJsonBodyRequest(url, "POST", null, null);
+        JsonObject response = HttpRequest.doJsonBodyRequest(url, "GET",
+                Map.of("Accept", "application/json"), null);
         return response.get("access_token").getAsString();
     }
 

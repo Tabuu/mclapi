@@ -22,6 +22,7 @@ public class Session {
 
     /**
      * Creates a session based on the provided session id.
+     *
      * @param sessionId The session id to base this session on.
      */
     public Session(String sessionId) {
@@ -31,6 +32,7 @@ public class Session {
 
     /**
      * Returns the session id.
+     *
      * @return The session id.
      */
     public String getId() {
@@ -39,6 +41,7 @@ public class Session {
 
     /**
      * Returns true if this session is valid, otherwise false.
+     *
      * @return True if this session is valid, otherwise false.
      */
     public boolean isValid() {
@@ -52,13 +55,15 @@ public class Session {
                     null,
                     requestBody
             ) == 204;
-        } catch (IOException ignored) { }
+        } catch (IOException ignored) {
+        }
 
         return false;
     }
 
     /**
      * Invalidates this session.
+     *
      * @return True if this session was successfully invalidated, otherwise false.
      */
     public boolean invalidate() {
@@ -72,18 +77,20 @@ public class Session {
                     null,
                     requestBody
             ) == 204;
-        } catch (IOException ignored) { }
+        } catch (IOException ignored) {
+        }
 
         return false;
     }
 
     /**
      * Makes a request to the Mojang servers to fetch the profile, and caches this.
+     *
      * @return The cached profile for this session.
      * @throws IllegalStateException If the profile could not be obtained from the Mojang servers.
      */
     public IMinecraftProfile getProfile() {
-        if(Objects.isNull(_profile)) {
+        if (Objects.isNull(_profile)) {
             try {
                 _profile = fetchProfile();
             } catch (IOException exception) {
@@ -94,7 +101,7 @@ public class Session {
         return _profile;
     }
 
-    private IMinecraftProfile fetchProfile() throws IOException{
+    private IMinecraftProfile fetchProfile() throws IOException {
         JsonObject response = HttpRequest.doJsonBodyRequest(
                 MINECRAFT_PROFILE_URL,
                 "GET",

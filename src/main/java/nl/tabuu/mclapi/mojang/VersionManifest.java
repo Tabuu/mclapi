@@ -2,7 +2,6 @@ package nl.tabuu.mclapi.mojang;
 
 import com.google.gson.Gson;
 import com.google.gson.JsonObject;
-import nl.tabuu.mclapi.mojang.IMCVersion;
 import nl.tabuu.mclapi.util.HttpRequest;
 
 import java.util.Arrays;
@@ -17,9 +16,18 @@ import java.util.stream.Collectors;
 public class VersionManifest {
 
     private static final String
-            VERSION_MANIFEST_URL = "https://launchermeta.mojang.com/mc/game/version_manifest.json";
+            MOJANG_VERSION_MANIFEST_URL = "https://launchermeta.mojang.com/mc/game/version_manifest.json";
 
     private Map<String, IMCVersion> _versions;
+    private String _manifestUrl;
+
+    public VersionManifest(String manifestUrl) {
+        _manifestUrl = manifestUrl;
+    }
+
+    public VersionManifest() {
+        this(MOJANG_VERSION_MANIFEST_URL);
+    }
 
     public Map<String, IMCVersion> getVersions() {
         if (Objects.isNull(_versions))
@@ -31,7 +39,7 @@ public class VersionManifest {
     private IMCVersion[] findVersions() {
         JsonObject manifest;
         try {
-            manifest = HttpRequest.doJsonBodyRequest(VERSION_MANIFEST_URL, "GET");
+            manifest = HttpRequest.doJsonBodyRequest(_manifestUrl, "GET");
         } catch (Exception exception) { return new IMCVersion[0]; }
 
         Gson gson = new Gson();

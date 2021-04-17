@@ -3,13 +3,11 @@ package nl.tabuu.mclapi.launcher;
 import nl.tabuu.mclapi.mojang.IMCVersion;
 import nl.tabuu.mclapi.mojang.MCAssetPackage;
 import nl.tabuu.mclapi.authentication.Session;
+import nl.tabuu.mclapi.profile.IMinecraftProfile;
 import nl.tabuu.mclapi.util.os.OperatingSystem;
 
 import java.io.File;
-import java.util.Arrays;
-import java.util.LinkedList;
-import java.util.List;
-import java.util.UUID;
+import java.util.*;
 import java.util.stream.Collectors;
 
 public class MCLauncher {
@@ -17,15 +15,21 @@ public class MCLauncher {
     private final static String LAUNCHER_NAME = "Another Generic Minecraft Launcher";
     private final static UUID LAUNCHER_ID = UUID.fromString("5c9a9384-6c2d-432f-a2b5-d662b22cfee9");
 
+    private final Map<String, IMinecraftProfile> _minecraftProfiles;
     private final OperatingSystem _operatingSystem;
     private final File _workDirectory;
 
     public MCLauncher(OperatingSystem operatingSystem, File workingDirection) {
+        _minecraftProfiles = new HashMap<>();
         _operatingSystem = operatingSystem;
         _workDirectory = workingDirection;
     }
 
-    public ProcessBuilder createMinecraftProcess(ILauncherProfile profile, Session session) {
+    public MCLauncher() {
+        this(OperatingSystem.getCurrent(), OperatingSystem.getCurrent().getMinecraftDirectory());
+    }
+
+    public ProcessBuilder createMinecraftProcess(LauncherProfile profile, Session session) {
         ProcessBuilder processBuilder = new ProcessBuilder();
 
         List<String> command = getLaunchCommand(session, profile.getVersion());
@@ -68,6 +72,18 @@ public class MCLauncher {
                 .map(MCAssetPackage.DownloadableLibraryWrapper::getPath)
                 .map(s -> new File(library, s).getPath())
                 .collect(Collectors.joining(_operatingSystem.getPathSeparator()));
+    }
+
+    public Optional<IMinecraftProfile> getMinecraftProfile(String username) {
+        return Optional.ofNullable(_minecraftProfiles.get(username));
+    }
+
+    public Set<IMinecraftProfile> getMinecraftProfiles() {
+        return new HashSet<>(_minecraftProfiles.values());
+    }
+
+    public void saveMinecraftProfile(IMinecraftProfile profile) {
+        _minecraftProfiles.put(profile.getUserName(), profile);
     }
 
     public static String getLauncherName() {
