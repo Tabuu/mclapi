@@ -27,6 +27,15 @@
         </plugins>
     </build>
 
+    <distributionManagement>
+        <repository>
+            <id>github</id>
+            <name>GitHub Tabuu's Apache Maven Packages</name>
+            <url>https://maven.pkg.github.com/Tabuu/mclapi</url>
+        </repository>
+    </distributionManagement>
+
+
     <dependencies>
         <dependency>
             <groupId>com.google.code.gson</groupId>
