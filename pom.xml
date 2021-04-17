@@ -35,7 +35,6 @@
         </repository>
     </distributionManagement>
 
-
     <dependencies>
         <dependency>
             <groupId>com.google.code.gson</groupId>
