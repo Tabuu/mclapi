@@ -1,5 +1,7 @@
 package nl.tabuu.mclapi.mojang;
 
+import java.util.concurrent.CompletableFuture;
+
 /**
  * Represents a Minecraft version.
  */
@@ -26,7 +28,7 @@ public interface IMCVersion {
      * Returns a MCAssetPackage based on this version.
      * @return A MCAssetPackage based on this version.
      */
-    default MCAssetPackage getAssetPackage() {
-        return new MCAssetPackage(this);
+    default CompletableFuture<MCAssetPackage> getAssetPackage() {
+        return MCAssetPackage.fromVersion(this);
     }
 }

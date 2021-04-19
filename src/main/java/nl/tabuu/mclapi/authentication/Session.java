@@ -6,11 +6,10 @@ import nl.tabuu.mclapi.launcher.MCLauncher;
 import nl.tabuu.mclapi.profile.IMinecraftProfile;
 import nl.tabuu.mclapi.util.HttpRequest;
 
-import java.io.IOException;
 import java.util.*;
+import java.util.concurrent.CompletableFuture;
 
 public class Session {
-
     public static final String
             MOJANG_AUTH_SERVER_URL = "https://authserver.mojang.com/%s",
             MOJANG_AUTH_SERVER_VALIDATE_ENPOINT = "validate",
@@ -44,21 +43,21 @@ public class Session {
      *
      * @return True if this session is valid, otherwise false.
      */
-    public boolean isValid() {
+    public CompletableFuture<Boolean> isValid() {
         JsonObject requestBody = new JsonObject();
         requestBody.addProperty("accessToken", getId());
-        requestBody.addProperty("clientToken", MCLauncher.getLauncherId().toString());
+        // requestBody.addProperty("clientToken", MCLauncher.getLauncherId().toString()); TODO: fix 403
 
-        try {
-            return HttpRequest.doPostRequest(
-                    String.format(MOJANG_AUTH_SERVER_URL, MOJANG_AUTH_SERVER_VALIDATE_ENPOINT),
-                    null,
-                    requestBody
-            ) == 204;
-        } catch (IOException ignored) {
-        }
-
-        return false;
+        return HttpRequest.doPostRequest(
+                String.format(MOJANG_AUTH_SERVER_URL, MOJANG_AUTH_SERVER_VALIDATE_ENPOINT),
+                Map.of("Content-Type", "application/json"),
+                requestBody
+        ).exceptionally(t -> { t.printStackTrace(); return 0;})
+                .thenApply(code -> {
+                    System.out.println(code);
+                    return code;
+                })
+                .thenApply((code) -> code == 204);
     }
 
     /**
@@ -66,62 +65,56 @@ public class Session {
      *
      * @return True if this session was successfully invalidated, otherwise false.
      */
-    public boolean invalidate() {
+    public CompletableFuture<Boolean> invalidate() {
         JsonObject requestBody = new JsonObject();
         requestBody.addProperty("accessToken", getId());
-        requestBody.addProperty("clientToken", MCLauncher.getLauncherId().toString());
+        // requestBody.addProperty("clientToken", MCLauncher.getLauncherId().toString()); TODO: fix 403
 
-        try {
-            return HttpRequest.doPostRequest(
-                    String.format(MOJANG_AUTH_SERVER_URL, MOJANG_AUTH_SERVER_INVALIDATE_ENPOINT),
-                    null,
-                    requestBody
-            ) == 204;
-        } catch (IOException ignored) {
-        }
-
-        return false;
+        return HttpRequest.doPostRequest(
+                String.format(MOJANG_AUTH_SERVER_URL, MOJANG_AUTH_SERVER_INVALIDATE_ENPOINT),
+                Map.of("Content-Type", "application/json"),
+                requestBody
+        ).exceptionally(t -> 0)
+                .thenApply(code -> code == 204);
     }
 
     /**
      * Makes a request to the Mojang servers to fetch the profile, and caches this.
      *
      * @return The cached profile for this session.
-     * @throws IllegalStateException If the profile could not be obtained from the Mojang servers.
      */
-    public IMinecraftProfile getProfile() {
-        if (Objects.isNull(_profile)) {
-            try {
-                _profile = fetchProfile();
-            } catch (IOException exception) {
-                throw new IllegalStateException("The profile could not be obtained from the Mojang servers.", exception);
-            }
+    public CompletableFuture<IMinecraftProfile> getProfile() {
+        if(Objects.isNull(_profile)) {
+            CompletableFuture<IMinecraftProfile> future = HttpRequest.doJsonBodyRequest(
+                    MINECRAFT_PROFILE_URL,
+                    "GET",
+                    Map.of(
+                            "Authorization", String.format("Bearer %s", getId())),
+                    null)
+                    .thenApply(this::getProfileFromJson);
+
+            future.thenApply(profile -> _profile = profile);
+
+            return future;
         }
 
-        return _profile;
+        return CompletableFuture.completedFuture(_profile);
     }
 
-    private IMinecraftProfile fetchProfile() throws IOException {
-        JsonObject response = HttpRequest.doJsonBodyRequest(
-                MINECRAFT_PROFILE_URL,
-                "GET",
-                Map.of(
-                        "Authorization", String.format("Bearer %s", getId())),
-                null);
-
+    private IMinecraftProfile getProfileFromJson(JsonObject object) {
         List<JsonElement> skins = new ArrayList<>();
-        response.getAsJsonArray("skins").iterator().forEachRemaining(skins::add);
+        object.getAsJsonArray("skins").iterator().forEachRemaining(skins::add);
 
-        UUID userId = UUID.fromString(response.get("id").getAsString().replaceFirst("(\\p{XDigit}{8})(\\p{XDigit}{4})(\\p{XDigit}{4})(\\p{XDigit}{4})(\\p{XDigit}+)",
+        UUID userId = UUID.fromString(object.get("id").getAsString().replaceFirst("(\\p{XDigit}{8})(\\p{XDigit}{4})(\\p{XDigit}{4})(\\p{XDigit}{4})(\\p{XDigit}+)",
                 "$1-$2-$3-$4-$5")); // Mojang does not like hyphens.
 
-        String name = response.get("name").getAsString();
+        String name = object.get("name").getAsString();
 
         String skinUrl = skins.stream()
                 .map(JsonElement::getAsJsonObject)
-                .filter(object -> "ACTIVE".equals(object.get("state").getAsString()))
+                .filter(json -> "ACTIVE".equals(json.get("state").getAsString()))
                 .findFirst()
-                .map(object -> object.get("url").getAsString())
+                .map(json -> json.get("url").getAsString())
                 .orElse(null);
 
         return new IMinecraftProfile() {

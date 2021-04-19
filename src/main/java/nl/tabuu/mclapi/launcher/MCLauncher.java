@@ -7,7 +7,9 @@ import nl.tabuu.mclapi.profile.IMinecraftProfile;
 import nl.tabuu.mclapi.util.os.OperatingSystem;
 
 import java.io.File;
+import java.io.IOException;
 import java.util.*;
+import java.util.concurrent.CompletableFuture;
 import java.util.stream.Collectors;
 
 public class MCLauncher {
@@ -29,49 +31,63 @@ public class MCLauncher {
         this(OperatingSystem.getCurrent(), OperatingSystem.getCurrent().getMinecraftDirectory());
     }
 
-    public ProcessBuilder createMinecraftProcess(LauncherProfile profile, Session session) {
-        ProcessBuilder processBuilder = new ProcessBuilder();
-
-        List<String> command = getLaunchCommand(session, profile.getVersion());
-
-        processBuilder.command(command);
-        return processBuilder;
+    public CompletableFuture<ProcessBuilder> createMinecraftProcess(LauncherProfile profile, Session session) {
+        return getLaunchCommand(session, profile.getVersion())
+                .thenApply(ProcessBuilder::new);
     }
 
-    public List<String> getLaunchCommand(Session session, IMCVersion version) {
+    public CompletableFuture<Boolean> launch(LauncherProfile profile, Session session) {
+        return createMinecraftProcess(profile, session)
+                .thenApply(process -> {
+                    try {
+                        process.start();
+                        return true;
+                    } catch (IOException exception) {
+                        exception.printStackTrace();
+                        return false;
+                    }
+                });
+    }
+
+    public CompletableFuture<List<String>> getLaunchCommand(Session session, IMCVersion version) {
         File libraries = new File(_workDirectory, "/libraries/");
         File jar = new File(_workDirectory, String.format("/versions/%s/%s.jar", version.getId(), version.getId()));
 
-        return Arrays.asList(
-                "java",
-                "-Xms256M",
-                "-Xmx1G",
-                String.format("-Djava.library.path=%s", new File(_workDirectory, String.format("/versions/%s/natives/", version.getId()))),
-                "-cp", jar.getPath() + _operatingSystem.getPathSeparator() + getLibraryString(libraries, version),
-                "-Dminecraft.launcher.brand=" + LAUNCHER_NAME,
-                "-Dminecraft.launcher.version=boii",
-                "net.minecraft.client.main.Main",
-                "--username", session.getProfile().getUserName(),
-                "--version", version.getId(),
-                "--gameDir", _workDirectory.getPath(),
-                "--assetsDir", new File(_workDirectory, "/assets/").getPath(),
-                "--assetIndex", version.getId(),
-                "--uuid", session.getProfile().getUserId().toString().replaceAll("-", ""),
-                "--accessToken", session.getId(),
-                "--userType", "legacy",
-                "--versionType", "release"
+        return session.getProfile().thenCombine(getLibraryString(libraries, version), (profile, string) ->
+            Arrays.asList(
+                    "java",
+                    "-Xms256M",
+                    "-Xmx1G",
+                    String.format("-Djava.library.path=%s", new File(_workDirectory, String.format("/versions/%s/natives/", version.getId()))),
+                    "-cp", jar.getPath() + _operatingSystem.getPathSeparator() + string,
+                    "-Dminecraft.launcher.brand=" + LAUNCHER_NAME,
+                    "-Dminecraft.launcher.version=boii",
+                    "net.minecraft.client.main.Main",
+                    "--username", profile.getUserName(),
+                    "--version", version.getId(),
+                    "--gameDir", _workDirectory.getPath(),
+                    "--assetsDir", new File(_workDirectory, "/assets/").getPath(),
+                    "--assetIndex", version.getId(),
+                    "--uuid", profile.getUserId().toString().replaceAll("-", ""),
+                    "--accessToken", session.getId(),
+                    "--userType", "legacy",
+                    "--versionType", "release"
+            )
         );
     }
 
-    private String getLibraryString(File library, IMCVersion version) {
-        List<MCAssetPackage.DownloadableLibraryWrapper> libraries = new LinkedList<>();
-        libraries.addAll(Arrays.asList(version.getAssetPackage().getClassifiers()));
-        libraries.addAll(Arrays.asList(version.getAssetPackage().getLibraries()));
+    private CompletableFuture<String> getLibraryString(File library, IMCVersion version) {
+        return version.getAssetPackage()
+                .thenApply(pack -> {
+                    List<MCAssetPackage.DownloadableLibraryWrapper> libraries = new LinkedList<>();
+                    libraries.addAll(Arrays.asList(pack.getClassifiers()));
+                    libraries.addAll(Arrays.asList(pack.getLibraries()));
 
-        return libraries.stream()
-                .map(MCAssetPackage.DownloadableLibraryWrapper::getPath)
-                .map(s -> new File(library, s).getPath())
-                .collect(Collectors.joining(_operatingSystem.getPathSeparator()));
+                    return libraries.stream()
+                            .map(MCAssetPackage.DownloadableLibraryWrapper::getPath)
+                            .map(s -> new File(library, s).getPath())
+                            .collect(Collectors.joining(_operatingSystem.getPathSeparator()));
+                });
     }
 
     public Optional<IMinecraftProfile> getMinecraftProfile(String username) {

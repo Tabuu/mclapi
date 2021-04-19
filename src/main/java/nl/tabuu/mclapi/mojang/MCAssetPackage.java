@@ -16,6 +16,7 @@ import java.io.IOException;
 import java.util.LinkedList;
 import java.util.List;
 import java.util.Map;
+import java.util.concurrent.CompletableFuture;
 import java.util.stream.Collectors;
 
 public class MCAssetPackage {
@@ -29,41 +30,12 @@ public class MCAssetPackage {
     private final DownloadableLibraryWrapper[] _libraries;
     private final DownloadableLibraryWrapper[] _classifiers;
 
-    public MCAssetPackage(IMCVersion version) {
+    protected MCAssetPackage(IMCVersion version, DownloadableAssetWrapper client, DownloadableAssetWrapper assetIndex, DownloadableLibraryWrapper[] libraries, DownloadableLibraryWrapper[] classifiers) {
         _version = version;
-        JsonObject manifest;
-
-        try {
-            manifest = HttpRequest.doJsonBodyRequest(version.getAssetManifestUrl(), "GET");
-        } catch (Exception exception) {
-            throw new IllegalStateException("Could not obtain asset package.");
-        }
-
-        Gson gson = new Gson();
-        _client = gson.fromJson(manifest.getAsJsonObject("downloads").get("client"), DownloadableAssetWrapper.class);
-        _assetIndex = gson.fromJson(manifest.get("assetIndex"), DownloadableAssetWrapper.class);
-
-        List<JsonElement> manifestEntries = new LinkedList<>();
-        manifest.getAsJsonArray("libraries").forEach(manifestEntries::add);
-
-        List<JsonObject> downloads = manifestEntries.stream()
-                .map(JsonElement::getAsJsonObject)
-                .map(element -> element.getAsJsonObject("downloads"))
-                .collect(Collectors.toList());
-
-        _libraries = downloads.stream()
-                .map(element -> element.getAsJsonObject("artifact"))
-                .map(element -> gson.fromJson(element, DownloadableLibraryWrapper.class))
-                .toArray(DownloadableLibraryWrapper[]::new);
-
-        String nativeId = String.format("natives-%s", OperatingSystem.getCurrent().getMinecraftId());
-        _classifiers = downloads.stream()
-                .filter(element -> element.has("classifiers"))
-                .map(element -> element.getAsJsonObject("classifiers"))
-                .filter(element -> element.has(nativeId))
-                .map(element -> element.getAsJsonObject(nativeId))
-                .map(element -> gson.fromJson(element, DownloadableLibraryWrapper.class))
-                .toArray(DownloadableLibraryWrapper[]::new);
+        _client = client;
+        _assetIndex = assetIndex;
+        _libraries = libraries;
+        _classifiers = classifiers;
     }
 
     public DownloadableAssetWrapper getClient() {
@@ -82,54 +54,102 @@ public class MCAssetPackage {
         return _classifiers;
     }
 
-    public boolean download(File target) {
-        if (!_client.download(new File(new File(target, String.format("/versions/%s/", getVersion().getId())), String.format("/%s.jar", getVersion().getId()))))
-            return false;
+    public CompletableFuture<Boolean> download(File target) {
+        File client = new File(target, String.format("/versions/%s/%s.jar", getVersion().getId(), getVersion().getId()));
+        File index = new File(target, String.format("/assets/indexes/%s.json", getVersion().getId()));
 
-        for (DownloadableLibraryWrapper library : getLibraries())
-            if (!library.download(new File(target, String.format("/libraries/%s", library.getPath()))))
-                return false;
+        CompletableFuture<Boolean> download = _client.download(client);
 
-        for (DownloadableLibraryWrapper library : getClassifiers())
-            if (!library.download(new File(target, String.format("/libraries/%s", library.getPath()))))
-                return false;
+        // Download libraries
+        for (DownloadableLibraryWrapper library : getLibraries()) {
+            download.thenComposeAsync(downloaded -> {
+                if(!downloaded) return CompletableFuture.completedFuture(false);
+                return library.download(new File(target, String.format("/libraries/%s", library.getPath())));
+            });
+        }
 
-        File indexFile = new File(target, String.format("/assets/indexes/%s.json", getVersion().getId()));
-        if (!_assetIndex.download(indexFile))
-            return false;
+        // Download native libraries/classifiers
+        for (DownloadableLibraryWrapper library : getClassifiers()) {
+            download.thenComposeAsync(downloaded -> {
+                if(!downloaded) return CompletableFuture.completedFuture(false);
+                return library.download(new File(target, String.format("/libraries/%s", library.getPath())));
+            });
+        }
+
+        // Download asset index
+        download.thenComposeAsync(downloaded -> {
+            if(!downloaded) return CompletableFuture.completedFuture(false);
+            return _assetIndex.download(index);
+        });
 
         FileReader indexReader;
         try {
-            indexReader = new FileReader(indexFile);
+            indexReader = new FileReader(index);
         } catch (FileNotFoundException e) {
-            return false;
+            return CompletableFuture.completedFuture(false);
         }
 
         Gson gson = new Gson();
         JsonReader reader = new JsonReader(indexReader);
         JsonObject object = JsonParser.parseReader(reader).getAsJsonObject().getAsJsonObject("objects");
 
+        // Downloading all assets from the asset index
         for (Map.Entry<String, JsonElement> entry : object.entrySet()) {
             DownloadableGameAssetWrapper gameAsset = gson.fromJson(entry.getValue(), DownloadableGameAssetWrapper.class);
-            if(!gameAsset.download(new File(target, String.format("/assets/objects/%.2s/%s", gameAsset.getHash(), gameAsset.getHash()))))
-                return false;
+            File asset = new File(target, String.format("/assets/objects/%.2s/%s", gameAsset.getHash(), gameAsset.getHash()));
+
+            download.thenComposeAsync(downloaded -> {
+                if(!downloaded) return CompletableFuture.completedFuture(false);
+                return gameAsset.download(asset);
+            });
         }
 
-        // Extracting
+        // Extracting native files from the classifier libraries
         for (DownloadableLibraryWrapper classifier : getClassifiers()) {
-
             File file = new File(target, String.format("/libraries/%s", classifier.getPath()));
             File destination = new File(target, String.format("/versions/%s/natives/", getVersion().getId()));
             try {
                 FileUtil.unzip(file, destination);
             } catch (IOException exception) {
                 exception.printStackTrace();
-                return false;
+                return CompletableFuture.completedFuture(false);
             }
 
         }
 
-        return true;
+        return download;
+    }
+
+    public static CompletableFuture<MCAssetPackage> fromVersion(IMCVersion version) {
+        return HttpRequest.doJsonBodyRequest(version.getAssetManifestUrl(), "GET").thenApply(manifest -> {
+            Gson gson = new Gson();
+            DownloadableAssetWrapper client = gson.fromJson(manifest.getAsJsonObject("downloads").get("client"), DownloadableAssetWrapper.class);
+            DownloadableAssetWrapper assetIndex = gson.fromJson(manifest.get("assetIndex"), DownloadableAssetWrapper.class);
+
+            List<JsonElement> manifestEntries = new LinkedList<>();
+            manifest.getAsJsonArray("libraries").forEach(manifestEntries::add);
+
+            List<JsonObject> downloads = manifestEntries.stream()
+                    .map(JsonElement::getAsJsonObject)
+                    .map(element -> element.getAsJsonObject("downloads"))
+                    .collect(Collectors.toList());
+
+            DownloadableLibraryWrapper[] libraries = downloads.stream()
+                    .map(element -> element.getAsJsonObject("artifact"))
+                    .map(element -> gson.fromJson(element, DownloadableLibraryWrapper.class))
+                    .toArray(DownloadableLibraryWrapper[]::new);
+
+            String nativeId = String.format("natives-%s", OperatingSystem.getCurrent().getMinecraftId());
+            DownloadableLibraryWrapper[] classifiers = downloads.stream()
+                    .filter(element -> element.has("classifiers"))
+                    .map(element -> element.getAsJsonObject("classifiers"))
+                    .filter(element -> element.has(nativeId))
+                    .map(element -> element.getAsJsonObject(nativeId))
+                    .map(element -> gson.fromJson(element, DownloadableLibraryWrapper.class))
+                    .toArray(DownloadableLibraryWrapper[]::new);
+
+            return new MCAssetPackage(version, client, assetIndex, libraries, classifiers);
+        });
     }
 
     public static class DownloadableGameAssetWrapper implements IDownloadableAsset {

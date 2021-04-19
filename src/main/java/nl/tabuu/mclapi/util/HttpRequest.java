@@ -13,8 +13,13 @@ import java.net.URLEncoder;
 import java.nio.charset.StandardCharsets;
 import java.util.Map;
 import java.util.Objects;
+import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
 
 public class HttpRequest {
+
+    private static ExecutorService SERVICE = Executors.newFixedThreadPool(5);
 
     public static String getParameterizedUri(String uri, Map<String, String> parameters) {
         StringBuilder result = new StringBuilder(uri);
@@ -33,67 +38,78 @@ public class HttpRequest {
         return result.toString();
     }
 
-    public static int doPostRequest(String uri, Map<String, String> headers, JsonObject body) throws IOException {
-        URL url = new URL(uri);
+    public static CompletableFuture<Integer> doPostRequest(String uri, Map<String, String> headers, JsonObject body) {
+        return CompletableFuture.supplyAsync(() -> {
+            try {
+                URL url = new URL(uri);
 
-        HttpURLConnection connection = (HttpURLConnection) url.openConnection();
+                HttpURLConnection connection = (HttpURLConnection) url.openConnection();
 
-        if(Objects.nonNull(headers))
-            headers.forEach(connection::setRequestProperty);
+                if(Objects.nonNull(headers))
+                    headers.forEach(connection::setRequestProperty);
 
-        connection.setRequestMethod("POST");
-        connection.setDoOutput(false);
+                connection.setRequestMethod("POST");
 
-        if(Objects.nonNull(body)) {
-            DataOutputStream outputStream = new DataOutputStream(connection.getOutputStream());
+                if(Objects.nonNull(body)) {
+                    connection.setDoOutput(true);
+                    DataOutputStream outputStream = new DataOutputStream(connection.getOutputStream());
 
-            outputStream.writeBytes(body.getAsString());
-            outputStream.flush();
-            outputStream.close();
-        }
+                    outputStream.writeBytes(body.toString());
+                    outputStream.flush();
+                    outputStream.close();
+                }
 
-        return connection.getResponseCode();
+                return connection.getResponseCode();
+            } catch (IOException exception) {
+                throw new IllegalStateException(exception);
+            }
+        }, SERVICE);
     }
 
-    public static JsonObject doJsonBodyRequest(String uri, String method) throws IOException {
+    public static CompletableFuture<JsonObject> doJsonBodyRequest(String uri, String method) {
         return doJsonBodyRequest(uri, method, null, null);
     }
 
-    public static JsonObject doJsonBodyRequest(String uri, String method, Map<String, String> headers, JsonObject body) throws IOException {
-        URL url = new URL(uri);
+    public static CompletableFuture<JsonObject> doJsonBodyRequest(String uri, String method, Map<String, String> headers, JsonObject body) {
+        return CompletableFuture.supplyAsync(() -> {
+            try {
+                URL url = new URL(uri);
 
-        HttpURLConnection connection = (HttpURLConnection) url.openConnection();
+                HttpURLConnection connection = (HttpURLConnection) url.openConnection();
 
-        if(Objects.nonNull(headers))
-            headers.forEach(connection::setRequestProperty);
+                if(Objects.nonNull(headers))
+                    headers.forEach(connection::setRequestProperty);
 
-        connection.setRequestMethod(method);
-        connection.setDoOutput(true);
+                connection.setRequestMethod(method);
 
-        if(Objects.nonNull(body)) {
-            DataOutputStream outputStream = new DataOutputStream(connection.getOutputStream());
+                if(Objects.nonNull(body)) {
+                    connection.setDoOutput(true);
+                    DataOutputStream outputStream = new DataOutputStream(connection.getOutputStream());
 
-            outputStream.writeBytes(body.toString());
-            outputStream.flush();
-            outputStream.close();
-        }
+                    outputStream.writeBytes(body.toString());
+                    outputStream.flush();
+                    outputStream.close();
+                }
 
-        int status = connection.getResponseCode();
-        boolean error = status > 299; // TODO: Do some sort of error handling.
+                int status = connection.getResponseCode();
+                boolean error = status > 299; // TODO: Do some sort of error handling.
 
-        BufferedReader inputReader = new BufferedReader(
-                new InputStreamReader(connection.getInputStream(), StandardCharsets.UTF_8)
-        );
+                BufferedReader inputReader = new BufferedReader(
+                        new InputStreamReader(connection.getInputStream(), StandardCharsets.UTF_8)
+                );
 
-        String line;
-        StringBuilder content = new StringBuilder();
-        while ((line = inputReader.readLine()) != null)
-            content.append(line);
+                String line;
+                StringBuilder content = new StringBuilder();
+                while ((line = inputReader.readLine()) != null)
+                    content.append(line);
 
-        inputReader.close();
-        connection.disconnect();
+                inputReader.close();
+                connection.disconnect();
 
-        return (JsonObject) JsonParser.parseString(content.toString());
+                return (JsonObject) JsonParser.parseString(content.toString());
+            } catch (IOException exception) {
+                throw new IllegalStateException(exception);
+            }
+        }, SERVICE);
     }
-
 }

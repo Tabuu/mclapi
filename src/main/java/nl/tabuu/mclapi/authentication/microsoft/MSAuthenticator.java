@@ -7,9 +7,9 @@ import nl.tabuu.mclapi.authentication.IAuthenticator;
 import nl.tabuu.mclapi.authentication.Session;
 import nl.tabuu.mclapi.util.HttpRequest;
 
-import java.io.IOException;
 import java.util.Map;
 import java.util.Objects;
+import java.util.concurrent.CompletableFuture;
 
 /**
  * Represents a Minecraft Microsoft authenticator.
@@ -23,39 +23,33 @@ public class MSAuthenticator implements IAuthenticator<MSAuthenticationRequest> 
             MC_LOGIN_URL = "https://api.minecraftservices.com/authentication/login_with_xbox";
 
     @Override
-    public AuthenticationResponse authenticate(MSAuthenticationRequest request) {
-        final String msAccessToken, sessionId;
-        final TokenPair xblToken, xstsToken;
+    public CompletableFuture<AuthenticationResponse> authenticate(MSAuthenticationRequest request) {
+        return getMicrosoftAccessToken(request.getAuthorisationToken())
+                .thenCompose(this::getXBLToken)
+                .thenCompose(this::getXSTSToken)
+                .thenCompose(this::getMinecraftSessionId)
+                .exceptionally(throwable -> "")
+                .thenApply(id -> id.isEmpty() ? null : new Session(id))
+                .thenCompose(s -> {
+                    if (Objects.isNull(s))
+                        return CompletableFuture.completedFuture(new AuthenticationResponse(AuthenticationResponse.State.NO_AUTHENTICATION));
 
-        try {
-            msAccessToken = getMicrosoftAccessToken(request.getAuthorisationToken());
-        } catch (IOException exception) {
-            exception.printStackTrace();
-            return new AuthenticationResponse(AuthenticationResponse.State.NO_AUTHENTICATION);
-        }
-
-        try {
-            xblToken = getXBLToken(msAccessToken);
-            xstsToken = getXSTSToken(xblToken);
-            sessionId = getMinecraftSessionId(xstsToken);
-        } catch (IOException ignored) {
-            return new AuthenticationResponse(AuthenticationResponse.State.NO_SESSION);
-        }
-
-        if(Objects.isNull(sessionId))
-            return new AuthenticationResponse(AuthenticationResponse.State.NO_SESSION);
-
-        return new AuthenticationResponse(AuthenticationResponse.State.SUCCESS, new Session(sessionId));
+                    return s.isValid().thenApply(valid -> {
+                        if (!valid)
+                            return new AuthenticationResponse(AuthenticationResponse.State.NO_SESSION);
+                        return new AuthenticationResponse(AuthenticationResponse.State.SUCCESS, s);
+                    });
+                });
     }
 
     /**
      * Returns the Microsoft access token.
+     *
      * @param authCode The Authorization token that should be retrieved from the browser.
      *                 Example URL: https://login.live.com/oauth20_authorize.srf?client_id=<client_id>&response_type=code&redirect_uri=https%3A%2F%2Flogin.live.com%2Foauth20_desktop.srf&scope=XboxLive.signin%20offline_access
      * @return The Microsoft access token.
-     * @throws IOException When something went wrong while getting the token.
      */
-    private String getMicrosoftAccessToken(String authCode) throws IOException {
+    private CompletableFuture<String> getMicrosoftAccessToken(String authCode) {
         Map<String, String> data = Map.of(
                 "client_id", "00000000402b5328", // key borrowed from MiniDigger TODO: Get own client_id
                 "code", authCode,
@@ -66,12 +60,12 @@ public class MSAuthenticator implements IAuthenticator<MSAuthenticationRequest> 
 
         String url = HttpRequest.getParameterizedUri(AUTH_TOKEN_URL, data);
 
-        JsonObject response = HttpRequest.doJsonBodyRequest(url, "GET",
-                Map.of("Accept", "application/json"), null);
-        return response.get("access_token").getAsString();
+        return HttpRequest.doJsonBodyRequest(url, "GET",
+                Map.of("Accept", "application/json"), null)
+                .thenApply(response -> response.get("access_token").getAsString());
     }
 
-    private TokenPair getXBLToken(String accessToken) throws IOException {
+    private CompletableFuture<TokenPair> getXBLToken(String accessToken) {
         JsonObject properties = new JsonObject();
         properties.addProperty("AuthMethod", "RPS");
         properties.addProperty("SiteName", "user.auth.xboxlive.com");
@@ -82,23 +76,25 @@ public class MSAuthenticator implements IAuthenticator<MSAuthenticationRequest> 
         json.addProperty("RelyingParty", "http://auth.xboxlive.com");
         json.addProperty("TokenType", "JWT");
 
-        JsonObject response = HttpRequest.doJsonBodyRequest(XBL_AUTH_URL, "POST", Map.of(
+        return HttpRequest.doJsonBodyRequest(XBL_AUTH_URL, "POST", Map.of(
                 "Content-Type", "application/json",
                 "Accept", "application/json",
                 "x-xbl-contract-version", "1"
-        ),json);
+        ), json).thenApply(response -> {
+            String token = response.get("Token").getAsString();
+            String userHash = response
+                    .getAsJsonObject("DisplayClaims")
+                    .getAsJsonArray("xui")
+                    .get(0)
+                    .getAsJsonObject()
+                    .get("uhs")
+                    .getAsString();
 
-        String token = response.get("Token").getAsString();
-
-        JsonObject displayClaims = (JsonObject) response.get("DisplayClaims");
-        JsonArray xui = (JsonArray) displayClaims.get("xui");
-        JsonObject container = (JsonObject) xui.get(0);
-        String uhs = container.get("uhs").getAsString();
-
-        return new TokenPair(token, uhs);
+            return new TokenPair(token, userHash);
+        });
     }
 
-    private TokenPair getXSTSToken(TokenPair xblToken) throws IOException {
+    private CompletableFuture<TokenPair> getXSTSToken(TokenPair xblToken) {
         JsonArray tokens = new JsonArray();
         tokens.add(xblToken.getToken());
 
@@ -111,32 +107,32 @@ public class MSAuthenticator implements IAuthenticator<MSAuthenticationRequest> 
         json.addProperty("RelyingParty", "rp://api.minecraftservices.com/");
         json.addProperty("TokenType", "JWT");
 
-        JsonObject response = HttpRequest.doJsonBodyRequest(XSTS_AUTH_URL, "POST", Map.of(
+        return HttpRequest.doJsonBodyRequest(XSTS_AUTH_URL, "POST", Map.of(
                 "Content-Type", "application/json",
                 "Accept", "application/json",
                 "x-xbl-contract-version", "1"
-        ),json);
+        ), json).thenApply(response -> {
+            String token = response.get("Token").getAsString();
+            String userHash = response
+                    .getAsJsonObject("DisplayClaims")
+                    .getAsJsonArray("xui")
+                    .get(0)
+                    .getAsJsonObject()
+                    .get("uhs")
+                    .getAsString();
 
-        String token = response.get("Token").getAsString();
-
-        JsonObject displayClaims = (JsonObject) response.get("DisplayClaims");
-        JsonArray xui = (JsonArray) displayClaims.get("xui");
-        JsonObject container = (JsonObject) xui.get(0);
-        String uhs = container.get("uhs").getAsString();
-
-        return new TokenPair(token, uhs);
+            return new TokenPair(token, userHash);
+        });
     }
 
-    private String getMinecraftSessionId(TokenPair xstsToken) throws IOException {
+    private CompletableFuture<String> getMinecraftSessionId(TokenPair xstsToken) {
         JsonObject json = new JsonObject();
         json.addProperty("identityToken", String.format("XBL3.0 x=%s;%s", xstsToken.getHash(), xstsToken.getToken()));
 
-        JsonObject response = HttpRequest.doJsonBodyRequest(MC_LOGIN_URL, "POST", Map.of(
+        return HttpRequest.doJsonBodyRequest(MC_LOGIN_URL, "POST", Map.of(
                 "Content-Type", "application/json",
                 "Accept", "application/json"
-        ),json);
-
-        return response.get("access_token").getAsString();
+        ), json).thenApply(response -> response.get("access_token").getAsString());
     }
 
     private static class TokenPair {

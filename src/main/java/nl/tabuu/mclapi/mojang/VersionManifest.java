@@ -1,13 +1,13 @@
 package nl.tabuu.mclapi.mojang;
 
 import com.google.gson.Gson;
-import com.google.gson.JsonObject;
 import nl.tabuu.mclapi.util.HttpRequest;
 
 import java.util.Arrays;
 import java.util.Collections;
+import java.util.HashMap;
 import java.util.Map;
-import java.util.Objects;
+import java.util.concurrent.CompletableFuture;
 import java.util.stream.Collectors;
 
 /**
@@ -18,32 +18,28 @@ public class VersionManifest {
     private static final String
             MOJANG_VERSION_MANIFEST_URL = "https://launchermeta.mojang.com/mc/game/version_manifest.json";
 
-    private Map<String, IMCVersion> _versions;
-    private String _manifestUrl;
+    private final Map<String, IMCVersion> _versions;
 
-    public VersionManifest(String manifestUrl) {
-        _manifestUrl = manifestUrl;
-    }
-
-    public VersionManifest() {
-        this(MOJANG_VERSION_MANIFEST_URL);
+    protected VersionManifest(Map<String, MCVersionWrapper> versions) {
+        _versions = new HashMap<>(versions);
     }
 
     public Map<String, IMCVersion> getVersions() {
-        if (Objects.isNull(_versions))
-            _versions = Arrays.stream(findVersions()).collect(Collectors.toMap(IMCVersion::getId, v -> v));
-
         return Collections.unmodifiableMap(_versions);
     }
 
-    private IMCVersion[] findVersions() {
-        JsonObject manifest;
-        try {
-            manifest = HttpRequest.doJsonBodyRequest(_manifestUrl, "GET");
-        } catch (Exception exception) { return new IMCVersion[0]; }
+    public static CompletableFuture<VersionManifest> get(String manifestUrl) {
+        return HttpRequest.doJsonBodyRequest(manifestUrl, "GET")
+                .thenApply(response -> {
+                    Gson gson = new Gson();
+                    return gson.fromJson(response.get("versions"), MCVersionWrapper[].class);
+                })
+                .thenApply(versions -> Arrays.stream(versions).collect(Collectors.toMap(IMCVersion::getId, v -> v)))
+                .thenApply(VersionManifest::new);
+    }
 
-        Gson gson = new Gson();
-        return gson.fromJson(manifest.get("versions"), MCVersionWrapper[].class);
+    public static CompletableFuture<VersionManifest> get() {
+        return get(MOJANG_VERSION_MANIFEST_URL);
     }
 
     public static class MCVersionWrapper implements IMCVersion {
