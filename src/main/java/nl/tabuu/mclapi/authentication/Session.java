@@ -2,7 +2,6 @@ package nl.tabuu.mclapi.authentication;
 
 import com.google.gson.JsonElement;
 import com.google.gson.JsonObject;
-import nl.tabuu.mclapi.launcher.MCLauncher;
 import nl.tabuu.mclapi.profile.IMinecraftProfile;
 import nl.tabuu.mclapi.util.HttpRequest;
 
@@ -13,7 +12,7 @@ public class Session {
     public static final String
             MOJANG_AUTH_SERVER_URL = "https://authserver.mojang.com/%s",
             MOJANG_AUTH_SERVER_VALIDATE_ENPOINT = "validate",
-            MOJANG_AUTH_SERVER_INVALIDATE_ENPOINT = "validate",
+            MOJANG_AUTH_SERVER_INVALIDATE_ENPOINT = "invalidate",
             MINECRAFT_PROFILE_URL = "https://api.minecraftservices.com/minecraft/profile";
 
     private final String _sessionId;
@@ -53,10 +52,6 @@ public class Session {
                 Map.of("Content-Type", "application/json"),
                 requestBody
         ).exceptionally(t -> { t.printStackTrace(); return 0;})
-                .thenApply(code -> {
-                    System.out.println(code);
-                    return code;
-                })
                 .thenApply((code) -> code == 204);
     }
 

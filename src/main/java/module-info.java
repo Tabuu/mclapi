@@ -15,6 +15,9 @@ module nl.tabuu.mclapi {
     exports nl.tabuu.mclapi.authentication.microsoft;
     exports nl.tabuu.mclapi.authentication.yggdrasil;
 
+    exports nl.tabuu.mclapi.minecraft;
+    exports nl.tabuu.mclapi.minecraft.packet;
+
     opens nl.tabuu.mclapi.mojang to com.google.gson;
     opens nl.tabuu.mclapi.mojang.rule to com.google.gson;
 }

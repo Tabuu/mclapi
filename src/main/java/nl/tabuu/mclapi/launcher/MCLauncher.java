@@ -40,13 +40,16 @@ public class MCLauncher {
         return createMinecraftProcess(profile, session)
                 .thenApply(process -> {
                     try {
+                        System.out.println("lwa");
+                        process.redirectError(new File(profile.getGameDirectory(), "log_error.txt"));
+                        process.redirectOutput(new File(profile.getGameDirectory(), "log_output.txt"));
                         process.start();
                         return true;
                     } catch (IOException exception) {
                         exception.printStackTrace();
                         return false;
                     }
-                });
+                }).exceptionally(t -> { t.printStackTrace(); return false; });
     }
 
     public CompletableFuture<List<String>> getLaunchCommand(Session session, IMCVersion version) {
@@ -84,6 +87,7 @@ public class MCLauncher {
                     libraries.addAll(Arrays.asList(pack.getLibraries()));
 
                     return libraries.stream()
+                            .filter(Objects::nonNull)
                             .map(MCAssetPackage.DownloadableLibraryWrapper::getPath)
                             .map(s -> new File(library, s).getPath())
                             .collect(Collectors.joining(_operatingSystem.getPathSeparator()));

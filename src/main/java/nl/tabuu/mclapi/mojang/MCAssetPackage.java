@@ -10,7 +10,6 @@ import nl.tabuu.mclapi.util.HttpRequest;
 import nl.tabuu.mclapi.util.os.OperatingSystem;
 
 import java.io.File;
-import java.io.FileNotFoundException;
 import java.io.FileReader;
 import java.io.IOException;
 import java.util.LinkedList;
@@ -85,7 +84,8 @@ public class MCAssetPackage {
         FileReader indexReader;
         try {
             indexReader = new FileReader(index);
-        } catch (FileNotFoundException e) {
+        } catch (Exception e) {
+            e.printStackTrace();
             return CompletableFuture.completedFuture(false);
         }
 
@@ -114,7 +114,6 @@ public class MCAssetPackage {
                 exception.printStackTrace();
                 return CompletableFuture.completedFuture(false);
             }
-
         }
 
         return download;

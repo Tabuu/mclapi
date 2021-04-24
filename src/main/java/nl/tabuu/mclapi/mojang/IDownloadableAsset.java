@@ -54,6 +54,8 @@ public interface IDownloadableAsset {
                     return true;
             }
 
+            System.out.printf("Downloading: %s\n", getUrl());
+
             target.getParentFile().mkdirs();
             try (BufferedInputStream in = new BufferedInputStream(new URL(getUrl()).openStream());
                  FileOutputStream fileOutputStream = new FileOutputStream(target)) {
